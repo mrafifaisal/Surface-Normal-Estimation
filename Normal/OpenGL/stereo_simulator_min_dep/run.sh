@@ -1,0 +1,1 @@
+cd builddir && ninja && cd .. && ./builddir/stereo_simulator $1 $2 $3

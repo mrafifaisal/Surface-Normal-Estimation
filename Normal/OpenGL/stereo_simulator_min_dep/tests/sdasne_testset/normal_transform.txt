@@ -1,0 +1,4 @@
+transform range from 0 - 1 to -1 - 1
+mirror z
+
+CD: k:0.01, s5, d16

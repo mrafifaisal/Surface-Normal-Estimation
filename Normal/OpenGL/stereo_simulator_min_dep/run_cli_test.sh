@@ -1,0 +1,1 @@
+./builddir/stereo_simulator ./tests/cmdlinetest/knight_disp_0.tiff ./tests/cmdlinetest/knight.calib ./tests/cmdlinetest/knight_normal.png ./tests/cmdlinetest/knight_mask.png

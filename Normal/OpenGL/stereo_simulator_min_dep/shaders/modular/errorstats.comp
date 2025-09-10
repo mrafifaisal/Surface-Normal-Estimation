@@ -1,0 +1,73 @@
+#version 460
+// #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require //
+// not supported in compute shaders :(
+
+#define LOC_SIZE 32
+
+#define PI 3.1415926538
+
+layout(local_size_x = LOC_SIZE, local_size_y = LOC_SIZE, local_size_z = 1) in;
+
+layout(rgba32f) uniform image2D reference;
+layout(rgba32f) uniform image2D observed;
+// layout(rgba32f) uniform image2D mask;
+
+uniform ivec2 resolution;
+uniform int metric;
+uniform double threshold = -1;
+uniform int margin;
+// uniform int use_mask;
+
+shared double dists[32][32];
+// shared bool masks[32][32];
+
+struct WGResult {
+    uint count;
+    double sum;
+};
+
+layout(binding = 1, std430) coherent buffer stats { WGResult results[]; };
+
+void main() {
+    uvec3 idx = gl_GlobalInvocationID + margin;
+    uvec3 lidx = gl_LocalInvocationID;
+    // masks[lidx.x][lidx.y] = imageLoad(mask, ivec2(idx.xy)).x < (1.0f/255/2);
+    if (/*!masks[lidx.x][lidx.y] && */idx.x < resolution.x-margin && idx.y < resolution.y-margin) {
+        vec3 r = imageLoad(reference, ivec2(idx.xy)).xyz;
+        vec3 o = imageLoad(observed, ivec2(idx.xy)).xyz;
+
+        double diff;
+        if (metric == 0)
+            diff = length(o - r);
+        else if (metric == 1) {
+            vec3 nr = normalize(r);
+            vec3 no = normalize(o);
+
+            float a = acos(dot(nr, no));
+            float b = PI - a;
+            diff = min(a, b);
+        }
+
+        dists[lidx.x][lidx.y] = diff;
+    }
+    memoryBarrierShared();
+    barrier();
+    if (lidx.x == 0 && lidx.y == 0) {
+        uint wgid = gl_WorkGroupID.x * gl_NumWorkGroups.y + gl_WorkGroupID.y;
+        double sum = 0;
+        uint cnt = 0;
+        ivec2 maxcoord = ivec2(min(LOC_SIZE, resolution.x-margin-idx.x),
+                               min(LOC_SIZE, resolution.y-margin-idx.y));
+        for (uint x = 0; x < maxcoord.x; ++x) {
+            for (uint y = 0; y < maxcoord.y; ++y) {
+                double val = dists[x][y];
+                if (!isnan(val) && !isinf(val) && val > threshold/* && !masks[x][y]*/) {
+                    sum += dists[x][y];
+                    cnt++;
+                }
+            }
+        }
+        results[wgid].sum = sum;
+        results[wgid].count = cnt;
+    }
+}
